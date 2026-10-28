@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../Dockerfile.backend
+    container_name: cybershield-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql://cybershield:forensic_secure_pass@postgres:5432/cybershield_db
+      - ISOLATION_CONTAINER_ENABLED=true
+      - EGRESS_GATEWAY_URL=http://isolated-browser:9222
+      - GOOGLE_SAFE_BROWSING_KEY=${GOOGLE_SAFE_BROWSING_KEY:-}
+      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal-net
+      - egress-gateway-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../Dockerfile.frontend
+    container_name: cybershield-web
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - internal-net
+
+  isolated-browser:
+    build:
+      context: .
+      dockerfile: Dockerfile.isolated-browser
+    container_name: cybershield-isolated-browser
+    restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      - CONNECTION_TIMEOUT=600
+      - DISABLE_DOWNLOADS=true
+      - BLOCK_LOCAL_RANGES=true
+    networks:
+      - egress-gateway-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: cybershield-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cybershield_db
+      POSTGRES_USER: cybershield
+      POSTGRES_PASSWORD: forensic_secure_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cybershield -d cybershield_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal-net
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  internal-net:
+    driver: bridge
+  egress-gateway-net:
+    driver: bridge
+    internal: false

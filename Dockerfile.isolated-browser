@@ -1,0 +1,19 @@
+# Dedicated ephemeral headless browser container with strict sandbox hardening
+FROM mcr.microsoft.com/playwright:v1.43.0-jammy
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    CHROME_ARGS="--disable-gpu --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-extensions --disable-background-networking --disable-sync --deny-permission-prompts --webrtc-ip-handling-policy=disable_non_proxied_udp"
+
+WORKDIR /isolation
+
+# Create unprivileged sandbox user
+RUN useradd -m -u 10002 isolation_runner && \
+    mkdir -p /isolation/temp_profiles && \
+    chown -R isolation_runner:isolation_runner /isolation
+
+USER isolation_runner
+
+EXPOSE 9222
+
+# Launch Chromium in headless remote-debugging/streaming mode
+CMD ["sh", "-c", "google-chrome --headless=new --remote-debugging-port=9222 --remote-debugging-address=0.0.0.0 --disable-gpu --no-sandbox --disable-extensions --webrtc-ip-handling-policy=disable_non_proxied_udp"]
